@@ -438,7 +438,7 @@ class mechanical_curve:
             ax.set_ylabel("RMS residuals [N]")
             ax.set_xlabel("Tip-Sample Position [m]")
         fit2=model(np.array(z), ymod[minim],zc[minim])
-        print(rf'fit1{ymod[minim]},{zc[minim]}')
+        print(rf'fit 2: E = {ymod[minim]}, Zc = {zc[minim]}')
 
         if plot_fit:
             plt.figure()
@@ -510,7 +510,7 @@ class mechanical_curve:
             ax.set_ylabel("RMS residuals [N]")
             ax.set_xlabel("Tip-Sample Position [m]")
         fit1=model(np.array(z), ymod[minim],zc[minim])
-        print(rf'fit2{ymod[minim]},{zc[minim]}')
+        print(rf'fit 1: E = {ymod[minim]}, Zc = {zc[minim]}')
         if plot_fit:
             plt.figure()
             plt.plot(z,f, color='b')
@@ -542,16 +542,17 @@ class mechanical_curve:
 
         self.fit_merged=fit_final
         self.merge_transition=transition
-    def fit(self, model, params=None,plot=1):
+    def fit(self, model, initial_guess=[1e3,0],params=None,plot=1):
         poc_idx=self.poc_idx
         z=self.tip_position
         f=self.force
         poc=z[poc_idx]
-        initial_guess = [1e3, poc]
+        # initial_guess = [1e3, poc]
 
         model_partial = partial(model, **params)
 
         params, pcov = curve_fit(model_partial, z, f, p0=initial_guess)
+        print(rf'E = {params}')
         fit=model(np.array(z), *params)
         perr = np.sqrt(np.diag(pcov))
         self.fiting=fit
@@ -559,7 +560,7 @@ class mechanical_curve:
             plt.figure()
             plt.plot(z,f)
             plt.plot(z,fit)
-            plt.title(rf'E ={ params[0]:.2f} Pa, uncertainty = {perr[0]:.2f}; Zc = {params[1]:.2e} m,  uncertainty = {perr[1]:.2e}, ')
+            # plt.title(rf'E ={ params[0]:.2f} Pa, uncertainty = {perr[0]:.2f}; Zc = {params[1]:.2e} m,  uncertainty = {perr[1]:.2e}, ')
             plt.xlabel('Tip-Sample [m]')
             plt.ylabel('Force [N]')
     def fit_double_regime(self):
