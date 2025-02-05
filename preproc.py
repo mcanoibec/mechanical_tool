@@ -10,12 +10,33 @@ from functools import partial
 from os import listdir
 from os.path import isfile, join
 
-def sensitivity_analysis(folder, file=None):
+def visualize_curves(folder, show_every=1):
     file_list = [f for f in listdir(folder) if isfile(join(folder, f))]
-    try:
-        substrate_idxs=np.loadtxt(r'temporary\cutout_idx.txt').astype(int)
-    except:
-        raise TypeError('Error: Cutout file missing or broken')
+    samples=np.arange(0,len(file_list)-1,show_every).astype(int)
+    samples_files=[file_list[f] for f in samples]
+    skipped=0
+    plt.figure()
+    for i in tqdm(np.arange(len(samples_files)), desc="Plotting curves"):
+        filename=rf'{folder}\{file_list[i]}'
+        try:
+            cc=mechanical_curve(filename, print_error=0)
+            plt.plot(cc.zpiezo, cc.vdef, alpha=0.5)
+        except:
+            skipped+=1
+    plt.xlabel('Z Piezo [m]')
+    plt.ylabel('Vertical Deflection [V]')
+    print(rf'Plot finalized. {len(samples_files)-skipped} curves shown, {skipped} skipped')
+    
+
+def sensitivity_analysis(folder, use_area_in_rough_topo=1):
+    file_list = [f for f in listdir(folder) if isfile(join(folder, f))]
+    if use_area_in_rough_topo:
+        try:
+            substrate_idxs=np.loadtxt(r'temporary\cutout_idx.txt').astype(int)
+        except:
+            raise TypeError('Error: Cutout file missing or broken')
+    else:
+        substrate_idxs=np.arange(len(file_list)).astype(int)
     skipped=0
     slopes=[]
     for i in tqdm(substrate_idxs):
