@@ -9,6 +9,7 @@ from scipy.signal import find_peaks
 from functools import partial
 from os import listdir
 from os.path import isfile, join
+import inspect
 
 def visualize_curves(folder, show_every=1):
     file_list = [f for f in listdir(folder) if isfile(join(folder, f))]
@@ -568,21 +569,34 @@ class mechanical_curve:
         z=self.tip_position
         f=self.force
         poc=z[poc_idx]
-        # initial_guess = [1e3, poc]
 
-        model_partial = partial(model, **params)
+        param_list = inspect.signature(model).parameters
+        param_list = list(param_list.keys())[1:]
 
-        params, pcov = curve_fit(model_partial, z, f, p0=initial_guess)
-        print(rf'E = {params}')
-        fit=model(np.array(z), *params)
-        perr = np.sqrt(np.diag(pcov))
-        self.fiting=fit
-        if plot:
-            plt.figure()
-            plt.plot(z,f)
-            plt.plot(z,fit)
-            # plt.title(rf'E ={ params[0]:.2f} Pa, uncertainty = {perr[0]:.2f}; Zc = {params[1]:.2e} m,  uncertainty = {perr[1]:.2e}, ')
-            plt.xlabel('Tip-Sample [m]')
-            plt.ylabel('Force [N]')
+
+        dict_keys = set(params.keys())
+        keys_set = set(param_list)
+
+        missing_keys = keys_set - dict_keys
+
+        if len(missing_keys)==len(initial_guess):
+            model_partial = partial(model, **params)
+
+            params_fitted, pcov = curve_fit(model_partial, z, f, p0=initial_guess)
+            print(rf'{missing_keys} = {params_fitted}')
+            final_params=np.concatenate((params_fitted, list(params.values())),axis=0)
+            fit=model(np.array(z), *final_params)
+            perr = np.sqrt(np.diag(pcov))
+            self.fiting=fit
+            if plot:
+                plt.figure()
+                plt.plot(z,f)
+                plt.plot(z,fit)
+                # plt.title(rf'E ={ params[0]:.2f} Pa, uncertainty = {perr[0]:.2f}; Zc = {params[1]:.2e} m,  uncertainty = {perr[1]:.2e}, ')
+                plt.xlabel('Tip-Sample [m]')
+                plt.ylabel('Force [N]')
+        else:
+              raise Exception("Error: The number of initial values must correspond to the number of free parameters")
+
     def fit_double_regime(self):
         a=1
