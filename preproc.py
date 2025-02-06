@@ -400,144 +400,182 @@ class mechanical_curve:
         mm=self.vdef_m
         tp=zz+mm
         self.tip_position=tp
-    def fit_sweep_backward(self, model,params=None, sample_sweep=1, nsamples=10, plot_sweep=1, plot_fit=1):
+    def fit_sweep_backward(self, model, initial_guess, params=None, sample_sweep=1, nsamples=10, plot_sweep=1, plot_fit=1):
         z=self.tip_position
         f=self.force
         poc_idx=self.poc_idx
         poc=z[poc_idx]
         tests=np.arange(poc_idx+1, len(z)-1)
-        model_partial = partial(model, **params)
+
         residuals=[]
-        ymod=[]
-        zc=[]
         fvecs=[]
-        for i in tqdm(tests):
-            try:
-                initial_guess = [1e3, poc]
-                params = curve_fit(model_partial, z[i:], f[i:], p0=initial_guess, full_output=True)
-                fit2=model(np.array(z), *params[0])
-                fvec=f[i-1:]-fit2[i-1:]
-                res=np.sqrt(np.mean(fvec**2))
-                residuals.append(res)
-                ymod.append(params[0][0])
-                zc.append(params[0][1])
-                fvecs.append(fvec)
-            except:
-                residuals.append(1)
-                ymod.append(1)
-                zc.append(1)
+        covars=[]
 
-        if sample_sweep:
-            sampling=np.linspace(0,len(residuals),nsamples, endpoint=False).astype(int)
-            sampled_res=np.full_like(residuals, np.nan)
-            for i in sampling:
+        model_partial = partial(model, **params)
+        
+        param_list = list(inspect.signature(model).parameters.keys())[1:]
+        missing_keys = [key for key in param_list if key not in params.keys()]
+
+        fit_params_matrix=np.zeros(shape=(len(tests), (len(missing_keys))))
+        n=0
+
+       
+        if len(missing_keys)==len(initial_guess):
+            for i in tqdm(tests):
                 try:
-                    sampled_res[i]=residuals[i]
+                    fitted_params, pconv = curve_fit(model_partial, z[i:], f[i:], p0=initial_guess)
+                    all_params=np.concatenate((fitted_params, list(params.values())),axis=0)
+                    fit2=model(np.array(z), *all_params)
+                    fvec=f[i-1:]-fit2[i-1:]
+                    res=np.sqrt(np.mean(fvec**2))
+                    residuals.append(res)
+
+                    fit_params_matrix[n]=fitted_params
+                    fvecs.append(fvec)
+                    covars.append(pconv)
+
                 except:
-                    print(i)
+                    residuals.append(1)
+                    fit_params_matrix[n]=np.ones_like(missing_keys)
+                n+=1
+                
+            if sample_sweep:
+                sampling=np.linspace(0,len(residuals),nsamples, endpoint=False).astype(int)
+                sampled_res=np.full_like(residuals, np.nan)
+                for i in sampling:
+                    try:
+                        sampled_res[i]=residuals[i]
+                    except:
+                        print(i)
 
-            sampled_res=pd.DataFrame(sampled_res)
-            sampled_res=sampled_res.interpolate(method='linear')
-            sampled_res=(sampled_res).iloc[:,0]
+                sampled_res=pd.DataFrame(sampled_res)
+                sampled_res=sampled_res.interpolate(method='linear')
+                sampled_res=(sampled_res).iloc[:,0]
+            else:
+                sampled_res=residuals
+
+            minim=np.argmin(sampled_res)
+            if plot_sweep:
+                fig=plt.figure()
+                for i in np.arange(len(missing_keys)):
+                    ax=fig.add_subplot(3,1,i+1)
+                    ax.plot(z[poc_idx+2:],fit_params_matrix[:,i])
+                    ax.set_ylabel(rf"{missing_keys[i]}")
+                    if i==0:
+                        ax.set_title('Backward Fit sweep')
+                
+                ax=fig.add_subplot(3,1,i+2)
+                ax.plot(z[poc_idx+2:],sampled_res)
+                ax.scatter(z[poc_idx+2:][minim],sampled_res[minim], color='r', zorder=10, s=60)
+                ax.set_ylabel("RMS residuals [N]")
+                ax.set_xlabel("Tip-Sample Position [m]")
+            
+
+            final_params=np.concatenate((fit_params_matrix[minim], list(params.values())),axis=0)
+            fit2=model(np.array(z), *final_params)
+
+            print(rf"Backward sweep fit: {missing_keys} = {fit_params_matrix[minim]}")
+            print(rf"Covariances = {np.diag(covars[minim])}")
+         
+            if plot_fit:
+                plt.figure()
+                plt.plot(z,f, color='b')
+                plt.plot(z,fit2, color='r')
+                plt.title('Backward sweep fit')
+
+            self.fit_backward=fit2
+            self.sweep_model_bw=model.__name__
         else:
-            sampled_res=residuals
-
-        minim=np.argmin(sampled_res)
-        if plot_sweep:
-            fig=plt.figure()
-            ax=fig.add_subplot(3,1,1)
-            ax.plot(z[poc_idx+2:],ymod)
-            ax.set_ylabel("EMod [Pa]")
-            ax.set_title('Fit sweep')
-
-            ax=fig.add_subplot(3,1,2)
-            ax.plot(z[poc_idx+2:],zc)
-            ax.set_ylabel("Zc [m]")
-
-            ax=fig.add_subplot(3,1,3)
-            ax.plot(z[poc_idx+2:],sampled_res)
-            ax.scatter(z[poc_idx+2:][minim],sampled_res[minim], color='r', zorder=10, s=60)
-            ax.set_ylabel("RMS residuals [N]")
-            ax.set_xlabel("Tip-Sample Position [m]")
-        fit2=model(np.array(z), ymod[minim],zc[minim])
-        print(rf'fit 2: E = {ymod[minim]}, Zc = {zc[minim]}')
-
-        if plot_fit:
-            plt.figure()
-            plt.plot(z,f, color='b')
-            plt.plot(z,fit2, color='r')
-        self.fit_backward=fit2
+            raise Exception("Error: The number of initial values must correspond to the number of free parameters")
         
 
-    def fit_sweep_forward(self, model, params=None, sample_sweep=1, nsamples=10, plot_sweep=1, plot_fit=1):#REMOVE PLOTS LATER
+    def fit_sweep_forward(self, model, initial_guess, params=None, sample_sweep=1, nsamples=10, plot_sweep=1, plot_fit=1):#REMOVE PLOTS LATER
         z=self.tip_position
         f=self.force
         poc_idx=self.poc_idx
         tests=np.arange(poc_idx+1, len(z)-1)
         poc=z[poc_idx]
+
         residuals=[]
-        ymod=[]
-        zc=[]
         fvecs=[]
         covars=[]
         model_partial = partial(model, **params)
-        for i in tqdm(tests):
-            try:
-                initial_guess = [1e3, poc]
-                params = curve_fit(model_partial, z[0:i], f[0:i], p0=initial_guess, full_output=True)
-                fit1=model(np.array(z), *params[0])
-                fvec=f[i-1:]-fit1[i-1:]
-                res=np.sqrt(np.mean(fvec**2))
-                residuals.append(res)
-                ymod.append(params[0][0])
-                zc.append(params[0][1])
-                fvecs.append(fvec)
-                covars.append(params[1])
-            except:
-                residuals.append(1)
-                ymod.append(1)
-                zc.append(1)
 
-        if sample_sweep:
-            sampling=np.linspace(0,len(residuals),nsamples, endpoint=False).astype(int)
-            sampled_res=np.full_like(residuals, np.nan)
-            for i in sampling:
+        param_list = list(inspect.signature(model).parameters.keys())[1:]
+        missing_keys = [key for key in param_list if key not in params.keys()]
+    
+
+        fit_params_matrix=np.zeros(shape=(len(tests), (len(missing_keys))))
+        n=0
+
+        if len(missing_keys)==len(initial_guess):
+
+            for i in tqdm(tests):
                 try:
-                    sampled_res[i]=residuals[i]
+                    fitted_params, pconv = curve_fit(model_partial, z[0:i], f[0:i], p0=initial_guess)
+                    all_params=np.concatenate((fitted_params, list(params.values())),axis=0)
+                    fit1=model(np.array(z), *all_params)
+                    fvec=f[i-1:]-fit1[i-1:]
+                    res=np.sqrt(np.mean(fvec**2))
+                    residuals.append(res)
+
+                    fit_params_matrix[n]=fitted_params
+                    fvecs.append(fvec)
+                    covars.append(pconv)
                 except:
-                    print(i)
+                    fit_params_matrix[i]=np.ones_like(missing_keys)
+                    residuals.append(1)
+                n+=1
 
-            sampled_res=pd.DataFrame(sampled_res)
-            sampled_res=sampled_res.interpolate(method='linear')
-            sampled_res=(sampled_res).iloc[:,0]
+            if sample_sweep:
+                sampling=np.linspace(0,len(residuals),nsamples, endpoint=False).astype(int)
+                sampled_res=np.full_like(residuals, np.nan)
+                for i in sampling:
+                    try:
+                        sampled_res[i]=residuals[i]
+                    except:
+                        print(i)
+
+                sampled_res=pd.DataFrame(sampled_res)
+                sampled_res=sampled_res.interpolate(method='linear')
+                sampled_res=(sampled_res).iloc[:,0]
+            else:
+                sampled_res=residuals
+
+            minim=np.argmin(sampled_res)
+
+            if plot_sweep:
+                fig=plt.figure()
+                for i in np.arange(len(missing_keys)):
+                    ax=fig.add_subplot(3,1,i+1)
+                    ax.plot(z[poc_idx+2:],fit_params_matrix[:,i])
+                    ax.set_ylabel(rf"{missing_keys[i]}")
+                    if i==0:
+                        ax.set_title('Forward Fit sweep')
+                
+                ax=fig.add_subplot(3,1,i+2)
+                ax.plot(z[poc_idx+2:],sampled_res)
+                ax.scatter(z[poc_idx+2:][minim],sampled_res[minim], color='r', zorder=10, s=60)
+                ax.set_ylabel("RMS residuals [N]")
+                ax.set_xlabel("Tip-Sample Position [m]")
+            
+            final_params=np.concatenate((fit_params_matrix[minim], list(params.values())),axis=0)
+
+            fit1=model(np.array(z), *final_params)
+
+            print(rf"Forward sweep fit: {missing_keys} = {fit_params_matrix[minim]}")
+            print(rf"Covariances = {np.diag(covars[minim])}")
+
+            if plot_fit:
+                plt.figure()
+                plt.plot(z,f, color='b')
+                plt.plot(z,fit1, color='r')
+                plt.title('Forward sweep fit')
+            self.fit_forward=fit1
+            self.sweep_model_fw=model.__name__
         else:
-            sampled_res=residuals
+            raise Exception("Error: The number of initial values must correspond to the number of free parameters")
 
-        minim=np.argmin(sampled_res)
-
-        if plot_sweep:
-            fig=plt.figure()
-            ax=fig.add_subplot(3,1,1)
-            ax.plot(z[poc_idx+2:],ymod)
-            ax.set_ylabel("EMod [Pa]")
-            ax.set_title('Fit sweep')
-
-            ax=fig.add_subplot(3,1,2)
-            ax.plot(z[poc_idx+2:],zc)
-            ax.set_ylabel("Zc [m]")
-
-            ax=fig.add_subplot(3,1,3)
-            ax.plot(z[poc_idx+2:],sampled_res)
-            ax.scatter(z[poc_idx+2:][minim],sampled_res[minim], color='r', zorder=10, s=60)
-            ax.set_ylabel("RMS residuals [N]")
-            ax.set_xlabel("Tip-Sample Position [m]")
-        fit1=model(np.array(z), ymod[minim],zc[minim])
-        print(rf'fit 1: E = {ymod[minim]}, Zc = {zc[minim]}')
-        if plot_fit:
-            plt.figure()
-            plt.plot(z,f, color='b')
-            plt.plot(z,fit1, color='r')
-        self.fit_forward=fit1
         
     def merge_fits(self, plot_fit=1):
         fit1=self.fit_forward
@@ -549,10 +587,11 @@ class mechanical_curve:
         transition=transition+poc_idx
         fit_final=np.concatenate((fit1[0:transition],fit2[transition:]), axis=0)
         if plot_fit:
-            plt.plot(tp,ff, color='b')
-            plt.plot(tp,fit1, color='orange')
-            plt.plot(tp,fit2, color='r')
-            plt.legend(['Cone', 'Paraboloid'])
+            plt.figure()
+            plt.plot(tp, ff, color='b', label='Force')
+            plt.plot(tp, fit1, color='orange', label=f'Forward Sweep: {self.sweep_model_fw}')
+            plt.plot(tp, fit2, color='r', label=f'Backward Sweep: {self.sweep_model_bw}')
+            plt.legend()
             plt.xlabel('Tip-Sample [m]')
             plt.ylabel('Force [N]')
 
@@ -561,6 +600,7 @@ class mechanical_curve:
             plt.plot(tp,fit_final)
             plt.xlabel('Tip-Sample [m]')
             plt.ylabel('Force [N]')
+            plt.title('Merged fit')
 
         self.fit_merged=fit_final
         self.merge_transition=transition
@@ -574,15 +614,18 @@ class mechanical_curve:
             end=np.argmin(abs((z*-1)-max_indentation))
         else:
             end=None
+                
+        param_list = list(inspect.signature(model).parameters.keys())[1:]
+        missing_keys = [key for key in param_list if key not in params.keys()]
 
-        param_list = inspect.signature(model).parameters
-        param_list = list(param_list.keys())[1:]
+        # param_list = inspect.signature(model).parameters
+        # param_list = list(param_list.keys())[1:]
 
 
-        dict_keys = set(params.keys())
-        keys_set = set(param_list)
+        # dict_keys = set(params.keys())
+        # keys_set = set(param_list)
 
-        missing_keys = keys_set - dict_keys
+        # missing_keys = list(keys_set - dict_keys)
 
         if len(missing_keys)==len(initial_guess):
             model_partial = partial(model, **params)
