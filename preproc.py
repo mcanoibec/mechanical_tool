@@ -564,11 +564,16 @@ class mechanical_curve:
 
         self.fit_merged=fit_final
         self.merge_transition=transition
-    def fit(self, model, initial_guess=[1e3,0],params=None,plot=1):
+    def fit(self, model, initial_guess=[1e3,0], max_indentation=None,params=None,plot=1):
+        
         poc_idx=self.poc_idx
         z=self.tip_position
         f=self.force
         poc=z[poc_idx]
+        if max_indentation!=None:
+            end=np.argmin(abs((z*-1)-max_indentation))
+        else:
+            end=None
 
         param_list = inspect.signature(model).parameters
         param_list = list(param_list.keys())[1:]
@@ -582,7 +587,7 @@ class mechanical_curve:
         if len(missing_keys)==len(initial_guess):
             model_partial = partial(model, **params)
 
-            params_fitted, pcov = curve_fit(model_partial, z, f, p0=initial_guess)
+            params_fitted, pcov = curve_fit(model_partial, z[:end], f[:end], p0=initial_guess)
             print(rf'{missing_keys} = {params_fitted}')
             final_params=np.concatenate((params_fitted, list(params.values())),axis=0)
             fit=model(np.array(z), *final_params)
