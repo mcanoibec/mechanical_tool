@@ -38,7 +38,7 @@ def cone(delta, E=ymod,  Zc=poc, Q=angle, dF=baseline, nu=nu):
             bb[i]=2/np.pi*E/(1-nu**2)*np.tan(Q)*(d[i])**2
     return bb+dF
 
-def cone_bottom_herman(delta, E=ymod,  Zc=poc, h=height,Q=angle, dF=baseline, nu=nu):
+def cone_bottom_herman(delta, E,  Zc,Q, dF, nu, h):
     r"""Hertz model for a conical indenter with bottom effect correction"""
     Q=np.radians(Q)
 
@@ -64,7 +64,7 @@ def hertz_r_free(delta, E,  Zc=poc, R=radius, dF=baseline, nu=nu):
             # print(rf'd: {d[i]}, zc={Zc}')
     return bb+dF
 
-def parab_bott_herman(delta, E,  Zc=poc, h=height, R=radius, dF=baseline, nu=nu):
+def parab_bott_herman(delta, E,  Zc, R, dF, nu, h):
     r"""Hertz model for a paraboloidal indenter with bottom effect correction"""
     #Q=np.radians(Q)
     d=Zc-delta
@@ -81,7 +81,7 @@ def parab_bott_herman(delta, E,  Zc=poc, h=height, R=radius, dF=baseline, nu=nu)
 
 
 
-def FaSphereGO5good(delta, E, Zc, h, R, dF):
+def FaSphereGO5good(delta, E, Zc,R, dF, h):
     r"""Approximate analytical formula of the contact mechanic model for an axisymmetric indenter for a thin film
     Gomila based on Dhaliwal and Rua's general solution """
     d=Zc-delta
@@ -130,7 +130,7 @@ def get_a_G05good(delta, R, Zc, h):
                 print(f"Optimization failed for index {i} with message: {result.message}")
     return aa
 
-def FaSphereGomila(delta, E, Zc, h, R, dF, nu):
+def FaSphereGomila(delta, E, Zc, R, dF, nu, h):
     r"""Approximate analytical formula of the contact mechanic model for an axisymmetric indenter for a thin film
     Gomila based on Dhaliwal and Rua's general solution """
     d=Zc-delta

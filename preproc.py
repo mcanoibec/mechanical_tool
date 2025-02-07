@@ -10,6 +10,77 @@ from functools import partial
 from os import listdir
 from os.path import isfile, join
 import inspect
+import os
+from datetime import datetime
+
+
+def batch_process(folder, sensitivity, setpoint, poc_method, k, model, initial_guess, params, select_every=1, export_results=1,export_txts=0):
+    file_list = [f for f in listdir(folder) if isfile(join(folder, f))]
+    samples=np.arange(0,len(file_list)-1,select_every).astype(int)
+    samples_files=[file_list[f] for f in samples]
+    current_datetime = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+
+    results=[]
+    skipped=0
+    completed=0
+    for i in tqdm(np.arange(len(samples_files)), desc="Processing curves"):
+        filename=rf'{folder}\{samples_files[i]}'
+        try:
+            cc=mechanical_curve(filename, print_error=0)
+            # # Correct baseline offset and slope
+            cc.correct_baseline()
+
+
+            # Apply contact point
+            cc.zero_x_axis(poc=poc_method)
+
+
+            # Callibrate curve
+            cc.callibrate(sensitivity=sensitivity, k=k)
+
+            # Calculate tip position
+            cc.correct_bending()
+
+            cc.get_height(setpoint=setpoint, use_vdef=0)
+            
+            bottom_effect_models=['cone_bottom_herman','parab_bott_herman','FaSphereGO5good','FaSphereGomila']
+
+            if model.__name__ in bottom_effect_models:
+                params.update({'h': cc.topo_height})
+
+            cc.fit(model=model, initial_guess=initial_guess, max_indentation=None, params = params, plot=0, verbose=0)
+
+            if export_txts:
+                export_path=rf'batch_processing_{current_datetime}'
+
+                if not os.path.exists(export_path):
+                    os.makedirs(export_path)
+                
+                file_path = os.path.join(export_path, rf'process_at_{i:04}.csv')
+
+                output=np.stack((cc.tip_position, cc.force, cc.fitting), axis=1)
+
+                df = pd.DataFrame(output, columns=['Tip Position [m]','force [m]',rf'Fit ({model.__name__})'])
+                df.to_csv(file_path, index=False)
+
+            results.append(np.concatenate(([i],cc.params_fitted)))
+        
+            completed+=1
+        except:
+            # rough_topo.append(np.nan)
+            skipped+=1
+    if export_results:
+        export_path=rf'batch_processing_{current_datetime}'
+
+        if not os.path.exists(export_path):
+            os.makedirs(export_path)
+        
+        file_path = os.path.join(export_path, rf'fitting_results.txt')
+        title=np.concatenate((['index'], cc.params_fitted_key))
+        df = pd.DataFrame(results, columns=title)
+        df.to_csv(file_path, sep='\t', index=False)
+    print(rf'{completed} curves were processed and saved in {export_path}')
+    print(rf'{skipped} curves were skipped')
 
 def visualize_curves(folder, show_every=1):
     file_list = [f for f in listdir(folder) if isfile(join(folder, f))]
@@ -585,7 +656,7 @@ class mechanical_curve:
             raise Exception("Error: The number of initial values must correspond to the number of free parameters")
 
         
-    def merge_fits(self, plot_fit=1):
+    def merge_fits(self, export_filename=None,plot_fit=1):
         poc_bw=self.poc_bw
         
         fit1=self.fit_forward
@@ -614,9 +685,16 @@ class mechanical_curve:
             plt.ylabel('Force [N]')
             plt.title('Merged fit')
 
+
         self.fit_merged=fit_final
         self.merge_transition=transition
-    def fit(self, model, initial_guess=[1e3,0], max_indentation=None,params=None,plot=1):
+        if export_filename!=None:
+                out=np.stack((self.tip_position, self.force, self.fit_merged), axis=1)
+                header=['Tip Sample Position [m]', 'Force [N]', rf'Merged Fit (FW:{self.sweep_model_fw}, BW: {self.sweep_model_bw}) [N]']
+                outt=pd.DataFrame(out, columns=header)
+                outt.to_csv(export_filename, sep='\t', index=False)
+
+    def fit(self, model, initial_guess=[1e3,0], max_indentation=None,params=None,plot=1, verbose=1, export_filename=None):
         
         poc_idx=self.poc_idx
         z=self.tip_position
@@ -643,11 +721,14 @@ class mechanical_curve:
             model_partial = partial(model, **params)
 
             params_fitted, pcov = curve_fit(model_partial, z[:end], f[:end], p0=initial_guess)
-            print(rf'{missing_keys} = {params_fitted}')
+            if verbose:
+             print(rf'{missing_keys} = {params_fitted}')
             final_params=np.concatenate((params_fitted, list(params.values())),axis=0)
             fit=model(np.array(z), *final_params)
             perr = np.sqrt(np.diag(pcov))
-            self.fiting=fit
+            self.params_fitted=params_fitted
+            self.params_fitted_key=missing_keys
+            self.fitting=fit
             if plot:
                 plt.figure()
                 plt.plot(z,f)
@@ -655,6 +736,11 @@ class mechanical_curve:
                 # plt.title(rf'E ={ params[0]:.2f} Pa, uncertainty = {perr[0]:.2f}; Zc = {params[1]:.2e} m,  uncertainty = {perr[1]:.2e}, ')
                 plt.xlabel('Tip-Sample [m]')
                 plt.ylabel('Force [N]')
+            if export_filename!=None:
+                out=np.stack((self.tip_position, self.force, self.fitting), axis=1)
+                header=['Tip Sample Position [m]', 'Force [N]', rf'Fit ({model.__name__}) [N]']
+                outt=pd.DataFrame(out, columns=header)
+                outt.to_csv(export_filename, sep='\t', index=False)
         else:
               raise Exception("Error: The number of initial values must correspond to the number of free parameters")
 
