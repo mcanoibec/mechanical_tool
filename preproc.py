@@ -18,7 +18,7 @@ def visualize_curves(folder, show_every=1):
     skipped=0
     plt.figure()
     for i in tqdm(np.arange(len(samples_files)), desc="Plotting curves"):
-        filename=rf'{folder}\{file_list[i]}'
+        filename=rf'{folder}\{samples_files[i]}'
         try:
             cc=mechanical_curve(filename, print_error=0)
             plt.plot(cc.zpiezo, cc.vdef, alpha=0.5)
