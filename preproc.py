@@ -59,7 +59,7 @@ def get_rough_topo(folder, setpoint, save_as=r'temporary\rough_topo.txt'):
         filename=rf'{folder}\{file_list[i]}'
         try:
             cc=mechanical_curve(filename, print_error=0)
-            cc.get_height(setpoint=setpoint)
+            cc.get_height(setpoint=setpoint, use_vdef=1)
             rough_topo.append(cc.topo_height)
         except:
             rough_topo.append(np.nan)
@@ -281,6 +281,7 @@ class mechanical_curve:
             vdef=matrix[:,1][segment==backward]
             zpiezo=matrix[:,0][segment==backward]
             self.zpiezo=zpiezo
+            self.raw_zpiezo=copy(zpiezo)
             self.vdef=vdef
             self.divide_curve()
             # self.segment=segment
@@ -370,15 +371,22 @@ class mechanical_curve:
         self.slope=fit_idnt['m'].iloc[peak_r2_idnt[0]]
 
     def get_height(self, setpoint, use_vdef=1):
+        #Should this be calculated with tip position?
         vdef=self.vdef
         zz=self.zpiezo
+        rzz=self.raw_zpiezo
+
         if use_vdef:
             topo=(np.abs(vdef - setpoint)).argmin()
+            height=rzz[topo]
         else:
-            line_idnt=self.idnt_fit
-            topo=(np.abs(line_idnt - setpoint)).argmin()
-
-        height=zz[topo]
+            try:
+                force=self.force
+                tp=self.tip_position
+            except:
+                raise Exception('Force or tip position channels not found')
+            topo=(np.abs(force - setpoint)).argmin()
+            height=rzz[topo]
 
         self.topo_height=height
         self.topo_idx=topo
@@ -482,7 +490,7 @@ class mechanical_curve:
                 plt.plot(z,f, color='b')
                 plt.plot(z,fit2, color='r')
                 plt.title('Backward sweep fit')
-
+            self.poc_bw=fit_params_matrix[minim][1]
             self.fit_backward=fit2
             self.sweep_model_bw=model.__name__
         else:
@@ -578,13 +586,17 @@ class mechanical_curve:
 
         
     def merge_fits(self, plot_fit=1):
+        poc_bw=self.poc_bw
+        
         fit1=self.fit_forward
         fit2=self.fit_backward
         tp=self.tip_position
         ff=self.force
         poc_idx=self.poc_idx
-        transition=np.argmin(abs(fit1[poc_idx:]-fit2[poc_idx:]))
-        transition=transition+poc_idx
+        poc_bw_idx=np.argmin(np.abs(tp-poc_bw))
+
+        transition=np.argmin(abs(fit1[poc_bw_idx:]-fit2[poc_bw_idx:]))
+        transition=transition+poc_bw_idx
         fit_final=np.concatenate((fit1[0:transition],fit2[transition:]), axis=0)
         if plot_fit:
             plt.figure()

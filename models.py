@@ -81,8 +81,7 @@ def parab_bott_herman(delta, E,  Zc=poc, h=height, R=radius, dF=baseline, nu=nu)
 
 
 
-
-def FaSphereGO5good(delta, E, Zc=poc, h=height, R=radius, dF=baseline):
+def FaSphereGO5good(delta, E, Zc, h, R, dF):
     r"""Approximate analytical formula of the contact mechanic model for an axisymmetric indenter for a thin film
     Gomila based on Dhaliwal and Rua's general solution """
     d=Zc-delta
@@ -91,7 +90,7 @@ def FaSphereGO5good(delta, E, Zc=poc, h=height, R=radius, dF=baseline):
     for i in range(len(delta)):
         if delta[i]<Zc:
             a=aa[i]
-            bb[i]=  2*E*a/(1-0.5**2) * ((daSphereO4G_G05good(a,R,h,Zc)) * (1+1.12695*(a/h)+1.27003*(a/h)**2+0.61828*(a/h)**3-0.21941*(a/h)**4-0.48779*(a/h)**5) - 
+            bb[i]=  2*E*a/(1-0.5**2) * ((d[i]) * (1+1.12695*(a/h)+1.27003*(a/h)**2+0.61828*(a/h)**3-0.21941*(a/h)**4-0.48779*(a/h)**5) - 
                                         a*(2*R/a+(1-(R/a)**2)*ln((R+a)/(R-a))) * (1/4+0.281739*(a/h)+0.317507*(a/h)**2+0.256194*(a/h)**3+0.0596706*(a/h)**4-0.153756*(a/h)**5) + 
                                         a*(2*(R/(3*a)+(R/a)**3)+(1-(R/a)**4)*ln((R+a)/(R-a))) * (0.152434*(a/h)**3+0.171786*(a/h)**4+0.00797409*(a/h)**5) - 
                                         a*(2*(R/(5*a)+1/3*(R/a)**3+(R/a)**5)+(1-(R/a)**6)*ln((R+a)/(R-a))) * 0.0618736*(a/h)**5)
@@ -107,13 +106,14 @@ def daSphereO4G_G05good(a, R, h, Zc):
                 (0.28173875 * (a / h) + 0.31750689 * (a / h)**2 + 0.0529485 * (a / h)**3 - 0.16937729 * (a / h)**4) +
                 a * (2 * (R / (3 * a) + (R / a)**3) + (1 - (R / a)**4) * ln((R + a) / (R - a))) *
                 (-0.152434 * (a / h)**3 - 0.171785 * (a / h)**4)) / \
-                (1 + 1.126955 * (a / h) + 1.2700276 * (a / h)**2 - 0.19469572 * (a / h)**3 - 1.135605 * (a / h)**4)+Zc
+                (1 + 1.126955 * (a / h) + 1.2700276 * (a / h)**2 - 0.19469572 * (a / h)**3 - 1.135605 * (a / h)**4)
     else:
         delta=np.nan
-    return delta
+    return delta-Zc
 
 def objective_G05good(a, delta, R, h, Zc):
-    return abs((daSphereO4G_G05good(a, R, h, Zc) - delta) * 100 / delta)
+    d=delta-Zc
+    return abs((daSphereO4G_G05good(a, R, h, Zc) - d) * 100 / d)
 
 def get_a_G05good(delta, R, Zc, h):
     """Compute the contact area radius (wrapper)"""
@@ -130,7 +130,7 @@ def get_a_G05good(delta, R, Zc, h):
                 print(f"Optimization failed for index {i} with message: {result.message}")
     return aa
 
-def FaSphereGomila(delta, E, Zc=poc, h=height, R=radius, dF=baseline, nu=nu):
+def FaSphereGomila(delta, E, Zc, h, R, dF, nu):
     r"""Approximate analytical formula of the contact mechanic model for an axisymmetric indenter for a thin film
     Gomila based on Dhaliwal and Rua's general solution """
     d=Zc-delta
@@ -144,13 +144,14 @@ def FaSphereGomila(delta, E, Zc=poc, h=height, R=radius, dF=baseline, nu=nu):
 
 def daSphereGomila(a, R, h, Zc):
     if a<R:
-        delta = a*np.arctanh(a/R)+((R**2+a**2)*np.arctanh(a/R)-a*R)*(-0.5664*(1/h)-0.4846*a**3*(1/h)**4)+0.1069*((3*R**4+6*a**2*R**2+7*a**4)*np.arctanh(a/R)-a*R*(3*R**2+7*a**2))*(1/h)**3+Zc
+        delta = a*np.arctanh(a/R)+((R**2+a**2)*np.arctanh(a/R)-a*R)*(-0.5664*(1/h)-0.4846*a**3*(1/h)**4)+0.1069*((3*R**4+6*a**2*R**2+7*a**4)*np.arctanh(a/R)-a*R*(3*R**2+7*a**2))*(1/h)**3
     else:
         delta=np.nan
-    return delta
+    return delta-Zc
 
 def objective_gomila(a, delta, R, h, Zc):
-    return abs((daSphereGomila(a, R, h, Zc) - delta) * 100 / delta)
+    d=delta-Zc
+    return abs((daSphereGomila(a, R, h, Zc) - d) * 100 / d)
 
 def get_a_gomila(delta, R, Zc, h):
     """Compute the contact area radius (wrapper)"""
@@ -167,7 +168,7 @@ def get_a_gomila(delta, R, Zc, h):
                 print(f"Optimization failed for index {i} with message: {result.message}")
     return aa
 
-def FaSphereGomila_limit(delta, E, Zc=poc, R=radius, dF=baseline, nu=nu):
+def FaSphereGomila_limit(delta, E, Zc, R, dF, nu):
     r"""Approximate analytical formula of the contact mechanic model for an axisymmetric indenter for a thin film
     Gomila based on Dhaliwal and Rua's general solution """
     d=Zc-delta
@@ -183,13 +184,14 @@ def FaSphereGomila_limit(delta, E, Zc=poc, R=radius, dF=baseline, nu=nu):
 def daSphereGomila_limit(a, R, Zc):
     if a<R:
         # delta = a*np.arctanh(a/R)+((R**2+a**2)*np.arctanh(a/R)-a*R)*(-0.5664*(1/h)-0.4846*a**3*(1/h)**4)+0.1069*((3*R**4+6*a**2*R**2+7*a**4)*np.arctanh(a/R)-a*R*(3*R**2+7*a**2))*(1/h)**3+Zc
-        delta = (a/2)*ln((R+a)/(R-a))+Zc
+        delta = (a/2)*ln((R+a)/(R-a))
     else:
         delta=np.nan
-    return delta
+    return delta-Zc
 
 def objective_limit(a, delta, R, Zc):
-    return abs((daSphereGomila_limit(a, R, Zc) - delta) * 100 / delta)
+    d=delta-Zc
+    return abs((daSphereGomila_limit(a, R, Zc) - d) * 100 / d)
 
 def get_a_limit(delta, R, Zc):
     """Compute the contact area radius (wrapper)"""
